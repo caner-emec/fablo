@@ -9,6 +9,18 @@ FABLO_IMAGE="$FABLO_IMAGE_NAME:$FABLO_VERSION"
 COMMAND="$1"
 COMMAND_CALL_ROOT="$(pwd)"
 FABLO_TARGET="$COMMAND_CALL_ROOT/fablo-target"
+PROMPT="yes"
+
+for arg in "$@"; do
+    case $arg in
+    --silent)
+        PROMPT="no"
+        shift # Remove --skip-verification from `$@`
+        ;;
+    *)
+        ;;
+    esac
+done
 
 # Create temporary directory and remove it after script execution
 FABLO_TEMP_DIR="$(mktemp -d -t fablo.XXXXXXXX)"
@@ -63,16 +75,16 @@ printHelp() {
   fablo up [/path/to/fablo-config.json|yaml]
     Starts the Hyperledger Fabric network for given Fablo configuration file, creates channels, installs and instantiates chaincodes. If there is no configuration, it will call 'generate' command for given config file.
 
-  fablo <down | start | stop>
+  fablo <down [--silent] | start | stop>
     Downs, starts or stops the Hyperledger Fabric network for configuration in the current directory. This is similar to down, start and stop commands for Docker Compose.
 
-  fablo reset
+  fablo reset [--silent]
     Downs and ups the network. Network state is lost, but the configuration is kept intact.
 
-  fablo prune
+  fablo prune [--silent]
     Downs the network and removes all generated files.
 
-  fablo recreate [/path/to/fablo-config.json|yaml]
+  fablo recreate [/path/to/fablo-config.json|yaml] [--silent]
     Prunes and ups the network. Default config file path is '\$(pwd)/fablo-config.json' or '\$(pwd)/fablo-config.yaml'.
 
   fablo chaincodes install
@@ -196,6 +208,18 @@ networkUp() {
   "$FABLO_TARGET/fabric-docker.sh" up
 }
 
+networkDown() {
+  if [ -f "$FABLO_TARGET/fabric-docker.sh" ]; then
+    "$FABLO_TARGET/fabric-docker.sh" down
+  fi
+}
+
+networkReset() {
+  if [ -f "$FABLO_TARGET/fabric-docker.sh" ]; then
+    "$FABLO_TARGET/fabric-docker.sh" reset
+  fi
+}
+
 executeFabloDockerCommand() {
   if [ ! -d "$FABLO_TARGET" ]; then
     echo "Error: This command needs the network to be generated at '$FABLO_TARGET'! Execute 'generate' or 'up' command."
@@ -264,12 +288,51 @@ elif [ "$COMMAND" = "generate" ]; then
 elif [ "$COMMAND" = "up" ]; then
   networkUp "$2"
 
+elif [ "$COMMAND" = "down" ]; then
+  if [ "$PROMPT" = "yes" ]; then
+    read -p "This command may cause unwanted loss of the network state. Do you want to continue? [Y/N]: " ANS
+    if [ "${ANS,,}" = "n" ]; then
+      exit 0
+    fi
+    networkDown "$2"
+  else
+    networkDown "$2"
+  fi
+
+elif [ "$COMMAND" = "reset" ]; then
+  if [ "$PROMPT" = "yes" ]; then
+    read -p "This command may cause unwanted loss of the network state. Do you want to continue? [Y/N]: " ANS
+    if [ "${ANS,,}" = "n" ]; then
+      exit 0
+    fi
+    networkReset "$2"
+  else
+    networkReset "$2"
+  fi
+
 elif [ "$COMMAND" = "prune" ]; then
-  networkPrune
+if [ "$PROMPT" = "yes" ]; then
+    read -p "This command may cause unwanted loss of the network state. Do you want to continue? [Y/N]: " ANS
+    if [ "${ANS,,}" = "n" ]; then
+      exit 0
+    fi
+    networkPrune
+  else
+    networkPrune
+  fi
 
 elif [ "$COMMAND" = "recreate" ]; then
-  networkPrune
-  networkUp "$2"
+  if [ "$PROMPT" = "yes" ]; then
+    read -p "This command may cause unwanted loss of the network state. Do you want to continue? [Y/N]: " ANS
+    if [ "${ANS,,}" = "n" ]; then
+      exit 0
+    fi
+    networkPrune
+    networkUp "$2"
+  else
+    networkPrune
+    networkUp "$2"
+  fi
 
 elif [ "$COMMAND" = "snapshot" ]; then
   createSnapshot "$2"
